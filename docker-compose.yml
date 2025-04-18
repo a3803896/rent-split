@@ -1,0 +1,29 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: rent_backend
+    ports:
+      - "3001:3000"                      # 對外開放 port 3001
+    volumes:
+      - ./backend:/app/backend
+      - ./data:/app/data                # SQLite 資料庫存放位置
+    restart: unless-stopped
+  frontend:
+    image: nginx:alpine
+    container_name: rent_frontend
+    ports:
+      - "8080:80"                        # 對外開放 port 8080
+    volumes:
+      - ./frontend:/usr/share/nginx/html:ro
+    restart: unless-stopped
+  sqlite-web:
+    image: python:3.9-alpine
+    container_name: rent_sqlite_web
+    command: sh -c "pip install --no-cache-dir sqlite-web && sqlite_web /app/data/rent.db --host=0.0.0.0 --port=8081"
+    volumes:
+      - ./data:/app/data
+    ports:
+      - "8081:8081"
+    restart: unless-stopped

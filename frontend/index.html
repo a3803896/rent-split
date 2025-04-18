@@ -1,0 +1,801 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+
+<head>
+    <meta charset="UTF-8">
+    <title>小屋記帳</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+    <style>
+        body {
+            background-color: #f8f9fa;
+        }
+
+        .card-title {
+            font-size: 1.25rem;
+            font-weight: 600;
+        }
+
+        .section-title {
+            margin-top: 2rem;
+            margin-bottom: 1rem;
+            font-size: 1.5rem;
+            font-weight: bold;
+        }
+
+        .list-group-item {
+            padding-top: 0.75rem;
+            padding-bottom: 0.75rem;
+        }
+
+        .card {
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.05);
+            border-radius: 1rem;
+        }
+
+        .card-body ul.list-group {
+            margin-top: 0.5rem;
+        }
+
+        .table th,
+        .table td {
+            vertical-align: middle;
+        }
+
+        .btn-link {
+            text-decoration: none;
+            font-weight: bold;
+        }
+
+        .form-label {
+            font-weight: 500;
+        }
+
+        .badge {
+            font-size: 0.85rem;
+            padding: 0.3em 0.5em;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="app" class="container py-4">
+        <section>
+            <!-- ✅ 房間與住戶管理（可摺疊） -->
+            <div class="section-title">🏠 房客管理</div>
+            <div class="card mb-4">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0" @click="showManage = !showManage" style="cursor: pointer;">
+                            {{ showManage ? '▼' : '▶' }} 住戶 {{ users.length }} 人 / 房間 {{ rooms.length }} 間
+                        </h5>
+                    </div>
+                    <div v-if="showManage" class="row g-4 mb-4 mt-3">
+                        <!-- 住戶管理 -->
+                        <div class="col-md-6">
+                            <div class="card">
+                                <div class="card-body">
+                                    <h5 class="card-title">👤 住戶管理</h5>
+                                    <form class="mb-3" @submit.prevent="addUser">
+                                        <div class="input-group">
+                                            <input v-model="newUser.name" type="text" class="form-control"
+                                                placeholder="住戶名稱" required />
+                                            <button class="btn btn-primary" type="submit">新增</button>
+                                        </div>
+                                    </form>
+                                    <ul class="list-group">
+                                        <li class="list-group-item d-flex justify-content-between align-items-center"
+                                            v-for="user in users" :key="user.id">
+                                            {{ user.name }}
+                                            <button class="btn btn-sm btn-outline-danger"
+                                                @click="deleteUser(user.id)">刪除</button>
+                                        </li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 房間管理 -->
+                        <div class="col-md-6">
+                            <!-- 原本房間管理的卡片內容，去掉外層的 card mb-4 包裝，只保留 card-body 內部 -->
+                            <div class="card">
+                                <div class="card-body">
+                                    <!-- 新增房間表單 + 房間列表 -->
+                                    <h5 class="card-title">🏠 房間管理</h5>
+                                    <form class="row g-2 align-items-end mb-3" @submit.prevent="addRoom">
+                                        <div class="input-group">
+                                            <input v-model="newRoom.name" type="text" class="form-control"
+                                                placeholder="房間名稱" required />
+                                            <button class="btn btn-primary">新增</button>
+                                        </div>
+                                    </form>
+                                    <div v-if="rooms.length" class="row g-2">
+                                        <div class="col-12" v-for="room in rooms" :key="room.id">
+                                            <div class="border p-3 rounded mb-2">
+                                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                                    <strong>{{ room.name }}</strong>
+                                                    <button class="btn btn-sm btn-outline-danger"
+                                                        @click="deleteRoom(room.id)">刪除</button>
+                                                </div>
+                                                <div class="mb-2">
+                                                    <span v-for="user in users.filter(u => u.room_id === room.id)"
+                                                        :key="user.id" class="badge bg-secondary me-1">
+                                                        {{ user.name }}
+                                                        <button class="btn btn-sm btn-link text-white p-0 ms-1"
+                                                            @click="unbindUserFromRoom(user.id)">×</button>
+                                                    </span>
+                                                </div>
+                                                <div class="input-group input-group-sm">
+                                                    <select class="form-select" v-model="roomAssignments[room.id]">
+                                                        <option disabled value="">選擇住戶</option>
+                                                        <option v-for="user in users.filter(u => !u.room_id)"
+                                                            :value="user.id">
+                                                            {{ user.name }}
+                                                        </option>
+                                                    </select>
+                                                    <button class="btn btn-primary"
+                                                        @click="assignUserToRoom(room.id, roomAssignments[room.id]); roomAssignments[room.id]=''">
+                                                        加入
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ✅ 已封存款項（可摺疊） -->
+            <div class="section-title">📦 已封存款項</div>
+            <div class="card mb-4">
+                <div class="card-body">
+                    <!-- 區塊標題 + 摺疊切換 + 批次還原按鈕 -->
+                    <div class="d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0" @click="showArchived = !showArchived" style="cursor: pointer;">
+                            {{ showArchived ? '▼' : '▶' }} 封存款項（{{ archivedPayments.length }} 筆）
+                        </h5>
+                        <button v-if="showArchived" class="btn btn-outline-success btn-sm"
+                            :disabled="archivedSelected.length === 0" @click="unarchiveSelectedPayments">
+                            還原所選
+                        </button>
+                    </div>
+
+                    <!-- 📋 封存款項資料表（僅在展開時顯示） -->
+                    <div v-if="showArchived" class="table-responsive mt-2">
+                        <table class="table table-bordered mb-0">
+                            <thead>
+                                <tr>
+                                    <th><input type="checkbox"
+                                            @change="toggleArchivedSelectAll($event.target.checked)" /></th>
+                                    <th>日期</th>
+                                    <th>款項</th>
+                                    <th>金額</th>
+                                    <th>繳款人</th>
+                                    <th>分帳人</th>
+                                    <th>備註</th>
+                                    <th>操作</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr v-for="item in archivedPayments" :key="item.id">
+                                    <td><input type="checkbox" :value="item.id" v-model="archivedSelected" /></td>
+                                    <td>{{ item.date }}</td>
+                                    <td>{{ item.category }}</td>
+                                    <td>{{ item.amount }}</td>
+                                    <td>{{ item.payer_name }}</td>
+                                    <td>
+                                        <template v-if="item.split_by === 'room'">
+                                            <div v-for="grp in item.split_per_room" :key="grp.room_id" class="mb-2">
+                                                <strong>{{ grp.room_name }}：</strong>
+                                                <span v-for="u in grp.users" :key="u.id"
+                                                    class="badge bg-secondary me-1">
+                                                    {{ u.name }} (${{ u.amount }})
+                                                </span>
+                                            </div>
+                                        </template>
+                                        <template v-else>
+                                            <span v-for="u in item.split_users" :key="u.id"
+                                                class="badge bg-secondary me-1">
+                                                {{ u.name }} (${{ u.amount }})
+                                            </span>
+                                        </template>
+                                    </td>
+                                    <td>{{ item.note }}</td>
+                                    <td>
+                                        <button class="btn btn-sm btn-outline-danger"
+                                            @click="deleteArchivedPayment(item.id)">
+                                            刪除
+                                        </button>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ✅ 常用款項（可摺疊） -->
+            <div class="section-title">⭐ 常用款項</div>
+            <div class="card mb-4">
+                <div class="card-body">
+                    <!-- 標題區塊：點擊可展開/摺疊 -->
+                    <div class="d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0" @click="showFavorites = !showFavorites" style="cursor: pointer;">
+                            {{ showFavorites ? '▼' : '▶' }} 常用款項（{{ favoritePayments.length }} 筆）
+                        </h5>
+                    </div>
+
+                    <!-- 表格內容（僅展開時顯示） -->
+                    <div v-if="showFavorites" class="mt-3">
+                        <table class="table table-bordered mb-0">
+                            <thead>
+                                <tr>
+                                    <th>繳款人</th>
+                                    <th>款項</th>
+                                    <th>金額</th>
+                                    <th>備註</th>
+                                    <th>分帳對象</th>
+                                    <th>操作</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr v-for="(item, i) in favoritePayments" :key="i">
+                                    <td>{{ getUserName(item.payer_id) }}</td>
+                                    <td>{{ item.category }}</td>
+                                    <td>${{ item.amount }}</td>
+                                    <td>{{ item.note }}</td>
+                                    <td>
+                                        <template v-if="item.split_by === 'room'">
+                                            <template v-for="(rid, idx) in item.splitRooms" :key="rid">
+                                                <strong>{{ getRoomNameById(rid) }}：</strong>
+                                                <span v-for="u in users.filter(u => u.room_id === rid)" :key="u.id"
+                                                    class="badge bg-secondary me-1">
+                                                    {{ u.name }} (${{ ((item.amount/item.splitRooms.length) /
+                                                    users.filter(u => u.room_id === rid).length) }})
+                                                </span>
+                                                <span v-if="idx < item.splitRooms.length - 1">、</span>
+                                            </template>
+                                        </template>
+                                        <template v-else>
+                                            <span v-for="(uid, i) in item.splitUsers" :key="uid"
+                                                class="badge bg-secondary me-1">
+                                                {{ getUserName(uid) }} (${{ (item.amount/item.splitUsers.length) }})
+                                            </span>
+                                        </template>
+                                    </td>
+                                    <td>
+                                        <button class="btn btn-sm btn-primary" @click="selectFavorite(item)">取用</button>
+                                        &nbsp;
+                                        <button class="btn btn-sm btn-outline-danger"
+                                            @click="removeFavorite(i)">刪除</button>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ✅ 用戶與新增款項區塊 -->
+            <div class="row g-4 mb-4">
+                <!-- ➕ 新增款項（右側） -->
+                <div class="col-md-12">
+                    <div class="card h-100">
+                        <div class="card-body">
+                            <h5 class="card-title">➕ 新增款項</h5>
+                            <form @submit.prevent="addPayment">
+                                <div class="row g-3">
+                                    <div class="col-md-6">
+                                        <label class="form-label">繳款人</label>
+                                        <select v-model="newPayment.payer_id" class="form-select" required>
+                                            <option disabled value="">請選擇</option>
+                                            <option v-for="user in users" :value="user.id">{{ user.name }}</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">款項</label>
+                                        <input v-model="newPayment.category" type="text" class="form-control"
+                                            placeholder="如 水電、網路">
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">金額</label>
+                                        <input v-model.number="newPayment.amount" type="number" class="form-control"
+                                            required>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">日期</label>
+                                        <input v-model="newPayment.date" type="date" class="form-control" required>
+                                    </div>
+                                    <div class="col-12">
+                                        <label class="form-label">備註</label>
+                                        <input v-model="newPayment.note" type="text" class="form-control">
+                                    </div>
+
+                                    <!-- 分帳方式切換 -->
+                                    <div class="col-12">
+                                        <label class="form-label">分帳方式</label> &nbsp;
+                                        <div class="form-check form-check-inline">
+                                            <input class="form-check-input" type="radio" id="splitByUser" value="user"
+                                                v-model="newPayment.split_by">
+                                            <label class="form-check-label" for="splitByUser">按人頭</label>
+                                        </div>
+                                        <div class="form-check form-check-inline">
+                                            <input class="form-check-input" type="radio" id="splitByRoom" value="room"
+                                                v-model="newPayment.split_by">
+                                            <label class="form-check-label" for="splitByRoom">按房間</label>
+                                        </div>
+                                    </div>
+
+                                    <!-- 👥 按人頭分帳：勾選人員 -->
+                                    <div class="col-12" v-if="newPayment.split_by === 'user'">
+                                        <label class="form-label">參與分帳者</label>
+                                        <div class="row">
+                                            <div class="col-6 col-md-4" v-for="user in users" :key="'split-' + user.id">
+                                                <div class="form-check">
+                                                    <input class="form-check-input" type="checkbox"
+                                                        :id="'split-user-' + user.id" :value="user.id"
+                                                        v-model="newPayment.splitUsers">
+                                                    <label class="form-check-label" :for="'split-user-' + user.id">
+                                                        {{ user.name }}
+                                                    </label>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- 🏠 按房間分帳：選擇房間 -->
+                                    <div class="col-12" v-if="newPayment.split_by === 'room'">
+                                        <label class="form-label">選擇要分帳的房間</label>
+                                        <div class="form-check" v-for="room in rooms" :key="room.id">
+                                            <input class="form-check-input" type="checkbox"
+                                                :id="`split-room-${room.id}`" :value="room.id"
+                                                v-model="newPayment.splitRooms" />
+                                            <label class="form-check-label" :for="`split-room-${room.id}`">
+                                                {{ room.name }}（
+                                                {{ getUsersInRoom(room.id).map(u => u.name).join('、') }}
+                                                ）
+                                            </label>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- 提交按鈕 -->
+                                <div class="d-grid mt-4">
+                                    <button class="btn btn-success">新增款項</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ✅ 款項紀錄區塊 -->
+            <div class="section-title">📑 款項紀錄</div>
+            <div class="card mb-4">
+                <div class="card-body">
+                    <!-- 封存按鈕 -->
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <h5 class="mb-0">所有款項</h5>
+                        <button class="btn btn-warning btn-sm" :disabled="selectedPayments.length === 0"
+                            @click="archiveSelectedPayments">
+                            封存所選
+                        </button>
+                    </div>
+
+                    <!-- 表格內容 -->
+                    <div class="table-responsive">
+                        <table class="table table-bordered mb-0">
+                            <thead>
+                                <tr>
+                                    <th><input type="checkbox" @change="toggleSelectAll($event.target.checked)" /></th>
+                                    <th>日期</th>
+                                    <th>款項</th>
+                                    <th>金額</th>
+                                    <th>繳款人</th>
+                                    <th>分帳對象</th>
+                                    <th>備註</th>
+                                    <th>操作</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr v-for="item in payments" :key="item.id">
+                                    <!-- ✅ 多選勾選框 -->
+                                    <td>
+                                        <input type="checkbox" :value="item.id" v-model="selectedPayments" />
+                                    </td>
+
+                                    <!-- 📅 日期與款項金額資訊 -->
+                                    <td>{{ item.date }}</td>
+                                    <td>{{ item.category }}</td>
+                                    <td>{{ item.amount }}</td>
+
+                                    <!-- 💰 繳款人 -->
+                                    <td>{{ item.payer_name }}</td>
+
+                                    <!-- 👥 分帳對象 -->
+                                    <td>
+                                        <template v-if="item.split_by === 'room'">
+                                            <div v-for="grp in item.split_per_room" :key="grp.room_id" class="mb-2">
+                                                <strong>{{ grp.room_name }}：</strong>
+                                                <span v-for="u in grp.users" :key="u.id"
+                                                    class="badge bg-secondary me-1">
+                                                    {{ u.name }} ${{ u.amount }}
+                                                </span>
+                                            </div>
+                                        </template>
+                                        <template v-else>
+                                            <span v-for="u in item.split_users" :key="u.id"
+                                                class="badge bg-secondary me-1">
+                                                {{ u.name }} ${{ u.amount }}
+                                            </span>
+                                        </template>
+                                    </td>
+
+                                    <!-- 📝 備註 -->
+                                    <td>{{ item.note }}</td>
+
+                                    <!-- ⚙️ 操作 -->
+                                    <td>
+                                        <button class="btn btn-sm btn-primary" @click="addToFavorites(item)">
+                                            加入常用
+                                        </button>
+                                        &nbsp;
+                                        <button class="btn btn-sm btn-outline-danger" @click="deletePayment(item.id)">
+                                            刪除
+                                        </button>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ✅ 結算表區塊 -->
+            <div class="section-title">📊 結算表</div>
+            <div class="card mb-5">
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-bordered mb-0">
+                            <thead>
+                                <tr>
+                                    <th>姓名</th>
+                                    <th>代墊金額</th>
+                                    <th>應付金額</th>
+                                    <th>淨額</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr v-for="item in summary" :key="item.name">
+                                    <td>{{ item.name }}</td>
+                                    <td>{{ item.paid }}</td>
+                                    <td>{{ item.owed }}</td>
+                                    <td :class="{ 'text-danger': item.net < 0, 'text-success': item.net > 0 }">
+                                        {{ item.net }}
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <script>
+            const { createApp, ref, onMounted } = Vue;
+
+            createApp({
+                setup() {
+                    // ===========================
+                    // 📦 1. Reactive 狀態變數宣告
+                    // ===========================
+                    const users = ref([]);
+                    const newUser = ref({ name: '' });
+
+                    const rooms = ref([]);
+                    const newRoom = ref({ name: '' });
+                    const roomAssignments = ref({});
+
+                    const payments = ref([]);
+                    const selectedPayments = ref([]);
+
+                    const newPayment = ref({
+                        payer_id: '',
+                        amount: '',
+                        category: '',
+                        date: new Date().toISOString().slice(0, 10),
+                        note: '',
+                        split_by: 'user',
+                        splitUsers: [],
+                        splitRooms: []
+                    });
+
+                    const summary = ref([]);
+
+                    const showFavorites = ref(false);
+                    const favoritePayments = ref([]);
+
+                    const showArchived = ref(false);
+                    const archivedPayments = ref([]);
+                    const archivedSelected = ref([]);
+                    const showManage = ref(false);
+
+                    // ===========================
+                    // 🧭 2. 使用者與房間管理
+                    // ===========================
+                    const loadUsers = async () => {
+                        const res = await fetch('http://localhost:3001/users');
+                        users.value = await res.json();
+                    };
+
+                    const loadRooms = async () => {
+                        const res = await fetch('http://localhost:3001/rooms');
+                        rooms.value = await res.json();
+                    };
+
+                    const addUser = async () => {
+                        if (!newUser.value.name) return;
+                        await fetch('http://localhost:3001/users', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(newUser.value)
+                        });
+                        newUser.value = { name: '' };
+                        await loadUsers();
+                    };
+
+                    const deleteUser = async (id) => {
+                        if (!confirm('確定要刪除這位住戶嗎？')) return;
+                        await fetch(`http://localhost:3001/users/${id}`, { method: 'DELETE' });
+                        await loadUsers();
+                    };
+
+                    const addRoom = async () => {
+                        if (!newRoom.value.name) return;
+                        await fetch('http://localhost:3001/rooms', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(newRoom.value)
+                        });
+                        newRoom.value.name = '';
+                        await loadRooms();
+                    };
+
+                    const deleteRoom = async (id) => {
+                        if (!confirm('確定要刪除此房間？')) return;
+                        await fetch(`http://localhost:3001/rooms/${id}`, { method: 'DELETE' });
+                        await loadRooms();
+                        await loadUsers();
+                    };
+
+                    const assignUserToRoom = async (roomId, user_id) => {
+                        if (!user_id) return;
+                        await fetch(`http://localhost:3001/users/${user_id}/assign-room`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ roomId })
+                        });
+                        await loadUsers();
+                    };
+
+                    const unbindUserFromRoom = async (user_id) => {
+                        await fetch(`http://localhost:3001/users/${user_id}/remove-room`, { method: 'POST' });
+                        await loadUsers();
+                    };
+
+                    const getUsersInRoom = (roomId) => {
+                        return users.value.filter(u => u.room_id === roomId)
+                    }
+
+                    const getRoomNameById = (roomId) => {
+                        const room = rooms.value.find(r => r.id === roomId)
+                        return room ? room.name : '未知房間'
+                    }
+
+                    // ===========================
+                    // 💸 3. 款項相關功能
+                    // ===========================
+                    const loadPayments = async () => {
+                        const res = await fetch('http://localhost:3001/payments-with-users');
+                        payments.value = await res.json();
+                    };
+
+                    const addPayment = async () => {
+                        const payload = { ...newPayment.value };
+
+                        if (!payload.payer_id || !payload.amount || !payload.date) {
+                            alert('請填寫完整資訊');
+                            return;
+                        }
+
+                        if (payload.split_by === 'user' && (!payload.splitUsers || payload.splitUsers.length === 0)) {
+                            alert('請選擇至少一位分帳住戶');
+                            return;
+                        }
+
+                        if (payload.split_by === 'room' && (!payload.splitRooms || payload.splitRooms.length === 0)) {
+                            alert('請選擇至少一個房間');
+                            return;
+                        }
+
+                        try {
+                            await fetch('http://localhost:3001/payments', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify(payload)
+                            });
+                            alert('✅ 款項新增成功！');
+                            newPayment.value = {
+                                payer_id: '', amount: '', category: '', date: new Date().toISOString().slice(0, 10),
+                                note: '', split_by: 'user', splitUsers: [], splitRooms: []
+                            };
+                            await loadPayments();
+                            await loadSummary();
+                        } catch (err) {
+                            console.error(err);
+                            alert('❌ 新增失敗，請檢查後端 API');
+                        }
+                    };
+
+                    const deletePayment = async (id) => {
+                        if (!confirm('確定要刪除這筆款項嗎？')) return;
+                        await fetch(`http://localhost:3001/payments/${id}`, { method: 'DELETE' });
+                        await loadPayments();
+                        await loadSummary();
+                    };
+
+                    const deleteArchivedPayment = async (id) => {
+                        if (!confirm('確定要永久刪除這筆封存款項嗎？')) return;
+                        try {
+                            await fetch(`http://localhost:3001/payments/${id}`, { method: 'DELETE' });
+                            // 重新載入封存清單
+                            await loadArchivedPayments();
+                        } catch (err) {
+                            console.error(err);
+                            alert('刪除失敗，請稍後再試');
+                        }
+                    };
+
+                    // ===========================
+                    // 🧾 4. 統計資料
+                    // ===========================
+                    const loadSummary = async () => {
+                        const res = await fetch('http://localhost:3001/summary');
+                        summary.value = await res.json();
+                    };
+
+                    // ===========================
+                    // ⭐ 5. 常用款項功能
+                    // ===========================
+                    const addToFavorites = (item) => {
+                        const favorites = JSON.parse(localStorage.getItem('favoritePayments') || '[]');
+                        // 組成新的 favorite 條目
+                        const fav = {
+                            payer_id: item.payer_id,
+                            amount: item.amount,
+                            category: item.category,
+                            note: item.note,
+                            split_by: item.split_by,
+                            splitUsers: [],   // 預設空
+                            splitRooms: []    // 預設空
+                        };
+
+                        if (item.split_by === 'user') {
+                            // 人頭分帳：存 user id 陣列
+                            fav.splitUsers = item.split_users.map(u => u.id);
+                        } else {
+                            // 房間分帳：存 room_id 陣列
+                            fav.splitRooms = item.split_per_room.map(grp => grp.room_id);
+                        }
+
+                        favorites.push(fav);
+                        localStorage.setItem('favoritePayments', JSON.stringify(favorites));
+                        favoritePayments.value = favorites;
+                        alert('✅ 已加入常用款項！');
+                    };
+
+                    const selectFavorite = (item) => {
+                        newPayment.value = {
+                            payer_id: item.payer_id,
+                            amount: item.amount,
+                            category: item.category,
+                            note: item.note,
+                            date: new Date().toISOString().slice(0, 10),
+                            split_by: item.split_by,
+                            splitUsers: item.splitUsers || [],
+                            splitRooms: item.splitRooms || []
+                        };
+                        showFavorites.value = false;
+                    };
+
+                    const removeFavorite = (index) => {
+                        if (!confirm('確定要刪除這筆常用款項嗎？')) return;
+                        favoritePayments.value.splice(index, 1);
+                        localStorage.setItem('favoritePayments', JSON.stringify(favoritePayments.value));
+                    };
+
+                    // ===========================
+                    // 📥 6. 封存 / 還原 功能
+                    // ===========================
+                    const archiveSelectedPayments = async () => {
+                        if (!confirm(`確定要封存這 ${selectedPayments.value.length} 筆款項嗎？`)) return;
+                        for (const id of selectedPayments.value) {
+                            await fetch(`http://localhost:3001/payments/${id}/archive`, { method: 'POST' });
+                        }
+                        selectedPayments.value = [];
+                        await loadPayments();
+                        await loadSummary();
+                        await loadArchivedPayments();
+                    };
+
+                    const toggleSelectAll = (checked) => {
+                        selectedPayments.value = checked ? payments.value.map(p => p.id) : [];
+                    };
+
+                    const loadArchivedPayments = async () => {
+                        const res = await fetch('http://localhost:3001/payments-with-users?archived=1');
+                        archivedPayments.value = await res.json();
+                    };
+
+                    const unarchiveSelectedPayments = async () => {
+                        if (!archivedSelected.value.length) return;
+                        if (!confirm(`確定要還原這 ${archivedSelected.value.length} 筆款項嗎？`)) return;
+                        for (const id of archivedSelected.value) {
+                            await fetch(`http://localhost:3001/payments/${id}/unarchive`, { method: 'POST' });
+                        }
+                        archivedSelected.value = [];
+                        await loadArchivedPayments();
+                        await loadPayments();
+                        await loadSummary();
+                    };
+
+                    const toggleArchivedSelectAll = (checked) => {
+                        archivedSelected.value = checked ? archivedPayments.value.map(p => p.id) : [];
+                    };
+
+                    // ===========================
+                    // 🧰 7. 工具函式
+                    // ===========================
+                    const getUserName = (id) => {
+                        const user = users.value.find(u => u.id === id);
+                        return user ? user.name : '未知使用者';
+                    };
+
+                    // ===========================
+                    // 🚀 初始化掛載
+                    // ===========================
+                    onMounted(() => {
+                        loadUsers();
+                        loadRooms();
+                        loadPayments();
+                        loadSummary();
+                        favoritePayments.value = JSON.parse(localStorage.getItem('favoritePayments') || '[]');
+                        loadArchivedPayments();
+                    });
+
+                    // ===========================
+                    // 📤 回傳綁定資料
+                    // ===========================
+                    return {
+                        users, newUser, addUser, deleteUser,
+                        rooms, newRoom, addRoom, deleteRoom,
+                        roomAssignments, assignUserToRoom, unbindUserFromRoom,
+                        payments, newPayment, addPayment, deletePayment,
+                        summary,
+                        showFavorites, favoritePayments, addToFavorites, selectFavorite, removeFavorite,
+                        showArchived, archivedPayments, archivedSelected,
+                        selectedPayments, archiveSelectedPayments, toggleSelectAll, deleteArchivedPayment,
+                        unarchiveSelectedPayments, toggleArchivedSelectAll,
+                        getUserName,
+                        getRoomNameById, getUsersInRoom,
+                        showManage
+                    };
+                }
+            }).mount('#app');
+        </script>
+</body>
+
+</html>
